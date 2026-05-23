@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------------
+# Swift Package Manager
+# ---------------------------------------------------------------------------
+.build/
+.swiftpm/
+Package.resolved
+Packages/
+*.xcframework/
+
+# ---------------------------------------------------------------------------
+# Xcode (in case anyone opens the package in Xcode locally)
+# ---------------------------------------------------------------------------
+DerivedData/
+build/
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+*.xcuserdata/
+xcuserdata/
+*.xcscheme
+!default.xcscheme
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+timeline.xctimeline
+playground.xcworkspace
+
+# ---------------------------------------------------------------------------
+# Generated app bundle artifacts (produced by build-app.sh)
+# ---------------------------------------------------------------------------
+*.app
+*.app.zip
+*.dmg
+*.pkg
+
+# ---------------------------------------------------------------------------
+# Code signing / provisioning (never commit these)
+# ---------------------------------------------------------------------------
+*.p12
+*.p8
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.provisionprofile
+ExportOptions.plist
+
+# ---------------------------------------------------------------------------
+# Dependency managers (not used today, but pre-empt future tooling)
+# ---------------------------------------------------------------------------
+Pods/
+Carthage/Build/
+Carthage/Checkouts/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# ---------------------------------------------------------------------------
+# macOS / Finder cruft
+# ---------------------------------------------------------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# ---------------------------------------------------------------------------
+# Editors / IDEs
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------------------------------------------------------------------------
+# Local secrets / overrides
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets.plist
+local.xcconfig
+
+# ---------------------------------------------------------------------------
+# Notarization / submission artifacts
+# ---------------------------------------------------------------------------
+notarization.zip
+notarization-*.log
+*.notarytool-history.json
