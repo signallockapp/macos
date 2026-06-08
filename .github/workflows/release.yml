@@ -1,0 +1,108 @@
+name: Release
+
+# Builds, optionally signs + notarizes the macOS app, then publishes the DMG as
+# a GitHub Release asset. The binary is NEVER committed to git — this workflow is
+# the single source of distributable macOS builds.
+#
+#   Cut a release:  git tag v0.1.0 && git push origin v0.1.0
+#   Dry run:        Actions tab → Release → "Run workflow" (uploads an artifact,
+#                   does not create a Release).
+#
+# Signing + notarization run ONLY when the secrets below are configured. Without
+# them make-dmg.sh falls back to an ad-hoc signature and macOS users see a
+# Gatekeeper warning on first launch (documented on the download landing page).
+#
+#   MACOS_SIGN_IDENTITY         "Developer ID Application: Your Name (TEAMID)"
+#   MACOS_CERTIFICATE_P12        base64 of the exported Developer ID .p12
+#   MACOS_CERTIFICATE_PASSWORD   password set when exporting the .p12
+#   MACOS_NOTARY_APPLE_ID        Apple ID email used for notarytool
+#   MACOS_NOTARY_TEAM_ID         Apple Developer Team ID
+#   MACOS_NOTARY_PASSWORD        app-specific password (appleid.apple.com)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the Release and upload assets
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure signing keychain
+        id: signing
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "${CERT_P12}" ]; then
+            echo "::notice::No MACOS_CERTIFICATE_P12 secret — building ad-hoc (unsigned)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed s/\"//g)
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Store notary credentials
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials "signallock-notary" \
+            --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD"
+
+      - name: Build + package DMG
+        env:
+          # make-dmg.sh signs with Developer ID + notarizes only when these are set.
+          APPLE_DEV_ID: ${{ steps.signing.outputs.enabled == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
+          NOTARY_PROFILE: ${{ steps.signing.outputs.enabled == 'true' && 'signallock-notary' || '' }}
+        run: ./make-dmg.sh
+
+      - name: Stage release asset
+        id: asset
+        run: |
+          SRC="$(ls .build/SignalLock-*.dmg | head -n1)"
+          DEST=".build/SignalLock.dmg" # stable, version-less name → /releases/latest/download/SignalLock.dmg
+          cp "$SRC" "$DEST"
+          SHA="$(shasum -a 256 "$DEST" | awk '{print $1}')"
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          {
+            echo "### SignalLock for macOS"
+            echo
+            echo "| File | SHA-256 |"
+            echo "|---|---|"
+            echo "| \`SignalLock.dmg\` | \`$SHA\` |"
+            echo
+            echo "Verify: \`shasum -a 256 ~/Downloads/SignalLock.dmg\`"
+          } > "$RUNNER_TEMP/notes.md"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "${{ steps.asset.outputs.path }}" \
+            --title "SignalLock $GITHUB_REF_NAME (macOS)" \
+            --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Upload artifact (dry runs only)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SignalLock-dmg
+          path: ${{ steps.asset.outputs.path }}
